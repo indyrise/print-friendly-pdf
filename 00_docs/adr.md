@@ -1,4 +1,4 @@
-# ADR — pdf-print-prep
+# ADR — print-friendly-pdf
 
 **Status:** Accepted  
 **Date:** 2026-06-07
@@ -7,11 +7,11 @@
 
 ## Context
 
-Design-heavy PDFs (dark backgrounds, colored layouts) are ink-expensive to print. The immediate use case is the SenseAI Ventures State of AI 2026 report — a Canva-exported PDF with near-full-page dark backgrounds, colored charts, and embedded images.
+Design-heavy PDFs (dark backgrounds, colored layouts) are ink-expensive to print. A common example is a Canva-exported PDF with near-full-page dark backgrounds, colored charts, and embedded images.
 
 Existing tools either invert all colors (damages charts) or only whiten the HTML chrome around page images (does not reduce ink on the pages themselves). Neither solves the actual problem.
 
-The tool is intended as a public-facing portfolio project with a live URL at pdf-print-prep.indyri.se.
+The tool is intended as a public-facing portfolio project with a live URL at print-friendly-pdf.indyri.se.
 
 ---
 
@@ -101,8 +101,8 @@ v1 is optimized for Chrome. Cross-browser print behavior is explicitly out of sc
 - Browser uploads PDF directly to Cloud Run to avoid Vercel function body size limits
 - Synchronous request/response for both v1 and v1.5
 - For v1, treat 32MB as supported maximum; warn above 25MB in UI
-- Public GitHub repo: indyrise/pdf-print-prep
-- Subdomain: pdf-print-prep.indyri.se via GoDaddy CNAME to Vercel
+- Public GitHub repo: indyrise/print-friendly-pdf
+- Subdomain: print-friendly-pdf.indyri.se via GoDaddy CNAME to Vercel
 
 ---
 
@@ -116,7 +116,7 @@ v1 is optimized for Chrome. Cross-browser print behavior is explicitly out of sc
 - Timeout: 300 seconds (set explicitly — default may be insufficient for large PDFs)
 - Memory: 1GB
 - Dedicated least-privilege service account — no broad IAM roles
-- CORS restricted to https://pdf-print-prep.indyri.se only — browser hygiene, not a hard security boundary. Does not prevent direct script or curl access. OPTIONS preflight responses apply the same origin restriction as normal responses.
+- CORS restricted to https://print-friendly-pdf.indyri.se only — browser hygiene, not a hard security boundary. Does not prevent direct script or curl access. OPTIONS preflight responses apply the same origin restriction as normal responses.
 
 ### GCP billing controls
 - Monthly budget cap set before Cloud Run URL is made public — hard prerequisite
@@ -206,5 +206,5 @@ v1 is optimized for Chrome. Cross-browser print behavior is explicitly out of sc
 
 PyMuPDF (fitz), Pillow, Flask, argparse, pathlib, base64, Python 3.11  
 Vercel (static frontend), Google Cloud Run (processing backend)  
-GitHub: indyrise/pdf-print-prep  
+GitHub: indyrise/print-friendly-pdf  
 Domain: GoDaddy CNAME → Vercel

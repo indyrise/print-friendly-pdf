@@ -1,4 +1,4 @@
-# Build Plan — pdf-print-prep
+# Build Plan — print-friendly-pdf
 
 **Date:** 2026-06-07  
 **Status:** Approved for implementation
@@ -9,7 +9,7 @@
 
 A public-facing tool that converts design-heavy PDFs into print-friendly PDFs. Users upload a PDF, the tool lightens dark backgrounds, and the browser opens the result in a new tab with a familiar print button.
 
-**Primary success metric:** The SenseAI Ventures 2026 report prints without heavy ink use, charts remain recognizable, and the live URL is portfolio-presentable.
+**Primary success metric:** A sample design-heavy PDF prints without heavy ink use, charts remain recognizable, and the live URL is portfolio-presentable.
 
 ---
 
@@ -56,11 +56,11 @@ Build v1 to completion and live before starting v1.5.
 
 Follow this order exactly. Do not move to the next step until the current one is confirmed working.
 
-1. Get `core.py` working locally via CLI on the SenseAI PDF
+1. Get `core.py` working locally via CLI on a sample design-heavy PDF
 2. Test on 5 representative pages before running the full PDF
-3. Validate format heuristic threshold — benchmark chars_per_page on SenseAI PDF and one text-heavy PDF
+3. Validate format heuristic threshold — benchmark chars_per_page on a sample design-heavy PDF and one text-heavy PDF
 4. Wrap in Flask, test locally
-5. Containerize, test Docker locally against SenseAI PDF
+5. Containerize, test Docker locally against a sample design-heavy PDF
 6. Deploy to Cloud Run, confirm end-to-end
 7. Build Vercel frontend
 8. Confirm GCP billing budget active before making URL public
@@ -73,18 +73,18 @@ Follow this order exactly. Do not move to the next step until the current one is
 ### Phase 0 — Infrastructure Preflight
 
 **GitHub**
-- Create public repo `indyrise/pdf-print-prep` on GitHub
+- Create public repo `indyrise/print-friendly-pdf` on GitHub
 - Add `.gitignore` (Python template), `README.md` (placeholder), `.env.example` (empty for now — no secrets in v1)
 - Clone locally
 
 **GoDaddy**
 - Log into GoDaddy DNS for `indyri.se`
-- Add CNAME record: `pdf-print-prep` → `cname.vercel-dns.com`
+- Add CNAME record: `print-friendly-pdf` → `cname.vercel-dns.com`
 - Note: CNAME can be created now; it will only resolve once the Vercel deployment exists in Phase 9
 
 **Vercel**
 - Vercel project creation happens in Phase 9 — domain hookup is intentionally split
-- When creating the Vercel project in Phase 9, add `pdf-print-prep.indyri.se` as a custom domain in project settings
+- When creating the Vercel project in Phase 9, add `print-friendly-pdf.indyri.se` as a custom domain in project settings
 
 **GCP**
 - Confirm a GCP project exists with billing enabled — required before Cloud Run deployment in Phase 7
@@ -109,7 +109,7 @@ Follow this order exactly. Do not move to the next step until the current one is
   - Log format decision and chars_per_page to terminal
   - Threshold of 200 is provisional — tune after Phase 11 QA
 
-**Exit criteria:** Clean open on valid PDF; clear errors on authenticated or missing file; format decision logged correctly on SenseAI PDF (expected: JPEG) and a text-heavy PDF (expected: PNG). The mandated 5-page test (build sequence step 2) is manual inspection of 5 representative pages in the full output — not a code-enforced constraint; no `--pages` flag required.
+**Exit criteria:** Clean open on valid PDF; clear errors on authenticated or missing file; format decision logged correctly on sample design-heavy PDF (expected: JPEG) and a text-heavy PDF (expected: PNG). The mandated 5-page test (build sequence step 2) is manual inspection of 5 representative pages in the full output — not a code-enforced constraint; no `--pages` flag required.
 
 ---
 
@@ -185,7 +185,7 @@ Follow this order exactly. Do not move to the next step until the current one is
   - `Content-Disposition: inline; filename="{original_stem}_print.pdf"`
 - Log processing time per request to stdout
 - Read PORT from environment, default 8080
-- CORS: restrict `Access-Control-Allow-Origin` to `https://pdf-print-prep.indyri.se` only — OPTIONS preflight responses apply the same origin restriction as normal responses
+- CORS: restrict `Access-Control-Allow-Origin` to `https://print-friendly-pdf.indyri.se` only — OPTIONS preflight responses apply the same origin restriction as normal responses
 - Handle OPTIONS preflight for both `/convert` and `/thumbnails` with origin-restricted headers
 
 **Exit criteria:** All error codes return correct HTTP status; upload → processing → PDF download works end to end in Chrome; classifications field accepted and ignored gracefully when not provided.
@@ -198,7 +198,7 @@ Follow this order exactly. Do not move to the next step until the current one is
 - No system-level MuPDF dependency — PyMuPDF wheels are self-contained since v1.18; `pip install pymupdf` handles it
 - `pip install pymupdf pillow flask`
 - `EXPOSE 8080`, `CMD ["python", "app.py"]`
-- **Test locally with Docker against SenseAI PDF before proceeding** — Docker build friction is a known risk; resolve locally before Cloud Run deployment
+- **Test locally with Docker against a sample design-heavy PDF before proceeding** — Docker build friction is a known risk; resolve locally before Cloud Run deployment
 - Cloud Run configuration:
   - Max instances: 2
   - Min instances: 0
@@ -207,7 +207,7 @@ Follow this order exactly. Do not move to the next step until the current one is
   - Memory: 1GB
   - Dedicated least-privilege service account
 
-**Exit criteria:** Local Docker run accepts SenseAI PDF and returns correct PDF output; Cloud Run deployment live and tested end to end.
+**Exit criteria:** Local Docker run accepts a sample design-heavy PDF and returns correct PDF output; Cloud Run deployment live and tested end to end.
 
 ---
 
@@ -241,9 +241,9 @@ Follow this order exactly. Do not move to the next step until the current one is
 
 ### Phase 10 — Public Repo and Subdomain
 
-- Push to `indyrise/pdf-print-prep`, public
+- Push to `indyrise/print-friendly-pdf`, public
 - README: what the tool does, live URL, known limitations (dark chart risk, 32MB ceiling, billing disable risk, Chrome-first), local CLI usage instructions
-- CNAME in GoDaddy: `pdf-print-prep.indyri.se` → Vercel deployment URL
+- CNAME in GoDaddy: `print-friendly-pdf.indyri.se` → Vercel deployment URL
 
 **Exit criteria:** Live URL resolves; tool works end to end; README portfolio-presentable.
 
@@ -251,7 +251,7 @@ Follow this order exactly. Do not move to the next step until the current one is
 
 ### Phase 11 — QA (v1)
 
-Run on 5 representative pages of the SenseAI PDF:
+Run on 5 representative pages of a sample design-heavy PDF:
 - Dark full-page background
 - Chart-heavy page
 - Text-heavy page (check PNG sharpness — small text must be clearly readable)
@@ -351,5 +351,5 @@ Add optional AI enhancement UI to existing frontend:
 
 PyMuPDF (fitz), Pillow, Flask, argparse, pathlib, base64, Python 3.11  
 Vercel (static frontend), Google Cloud Run (processing backend)  
-GitHub: indyrise/pdf-print-prep  
+GitHub: indyrise/print-friendly-pdf  
 Domain: GoDaddy CNAME → Vercel
