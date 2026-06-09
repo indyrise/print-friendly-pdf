@@ -138,19 +138,7 @@ Follow this order exactly. Do not move to the next step until the current one is
 
 ---
 
-### Phase 4 — Crop
-
-- Skip if `--no-crop` set
-- Apply `ImageOps.invert(img).getbbox()` — simple trim heuristic, not content-aware
-- On full-page designed rasters may return near-full-image bounds and be a no-op — acceptable
-- If `getbbox()` returns None: log and skip, do not crash
-- If bounds found: crop then add 10px safe margin on all sides
-
-**Exit criteria:** No crash on edge cases; `--no-crop` produces full-page images.
-
----
-
-### Phase 5 — PDF Reassembly
+### Phase 4 — PDF Reassembly
 
 - Create new PyMuPDF document
 - Per processed page image:
@@ -178,7 +166,7 @@ Follow this order exactly. Do not move to the next step until the current one is
   - Password-protected PDF → 400 with clear message
   - Zero-page PDF → 400 with clear message
   - Processing failure → 500 with JSON error message
-- Run full processing pipeline: dpi=150, lighten=True, crop=True, format via heuristic
+- Run full processing pipeline: dpi=150, lighten=True, format via heuristic
 - Apply classifications if valid and present; fall back to corner-sampling heuristic for any page missing a classification entry
 - Return PDF as file response:
   - `Content-Type: application/pdf`
@@ -262,7 +250,7 @@ Also run on one text-heavy PDF to validate format heuristic:
 - Confirm chars_per_page >= 200 triggers PNG
 - Confirm PNG output is visibly sharper than JPEG would be on text pages
 
-Check: ink reduction in Chrome print preview, charts recognizable, no content cropped, PDF opens correctly in browser tab.
+Check: ink reduction in Chrome print preview, charts recognizable, PDF opens correctly in browser tab.
 
 If chart damage unacceptable: rerun with `--no-lighten`, document tradeoff.
 If format threshold needs adjustment: update threshold, re-run, document new value in ADR.

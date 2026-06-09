@@ -6,7 +6,7 @@ from io import BytesIO
 from typing import Any
 
 import fitz
-from PIL import Image, ImageOps
+from PIL import Image
 
 
 JPEG_THRESHOLD_CHARS_PER_PAGE = 200
@@ -127,20 +127,6 @@ def _lighten_image(img: Image.Image) -> Image.Image:
     return img.point(lut * 3)
 
 
-def _crop_image(img: Image.Image) -> Image.Image:
-    bbox = ImageOps.invert(img).getbbox()
-    if not bbox:
-        print("Crop skipped: empty bounding box")
-        return img
-
-    x1, y1, x2, y2 = bbox
-    x1 = max(0, x1 - 10)
-    y1 = max(0, y1 - 10)
-    x2 = min(img.width, x2 + 10)
-    y2 = min(img.height, y2 + 10)
-    return img.crop((x1, y1, x2, y2))
-
-
 def _print_summary(summary: ProcessingSummary) -> None:
     print("--- print-friendly-pdf complete ---")
     print(f"Pages processed: {summary.page_count}")
@@ -164,7 +150,6 @@ def process_pdf(
     pdf_bytes: bytes,
     dpi: int = 150,
     lighten: bool = True,
-    crop: bool = True,
     classifications: list[dict[str, Any]] | None = None,
 ) -> bytes:
     doc = _open_pdf(pdf_bytes)
@@ -208,9 +193,6 @@ def process_pdf(
                     f"{'applied' if lightening_applied else 'skipped'} "
                     f"({lightening_source})"
                 )
-
-                if crop:
-                    img = _crop_image(img)
 
                 buf = BytesIO()
                 if fmt == "jpeg":

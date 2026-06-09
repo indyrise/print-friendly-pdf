@@ -41,7 +41,6 @@ Hosted AI mode (tool owner's key, owner's cost) is explicitly out of scope. The 
 - Detect dark background via corner sampling: sample four corners (10x10px), compute mean RGB; if below 80, treat as dark page
 - Apply luminance-based LUT via Pillow `point()` — maps pixel values 0–60 toward 220–255, leaves mid-tones and highlights stable. Not a full inversion. Not a histogram-wide autocontrast.
 - Apply LUT to R, G, B channels independently
-- Optional crop via `ImageOps.invert(img).getbbox()` — simple trim heuristic, may be a no-op on many full-page designed rasters
 - Reassemble processed page images into a PDF using PyMuPDF
 - Return PDF as file response — browser opens in tab with native print button
 
@@ -144,7 +143,6 @@ v1 is optimized for Chrome. Cross-browser print behavior is explicitly out of sc
 - PNG default preserves text sharpness at cost of larger file size; JPEG used automatically for image-heavy documents via chars_per_page heuristic
 - No searchable text layer in PDF output in v1 — deferred to v2
 - Synchronous wait with spinner acceptable for portfolio use case, not for production scale
-- Crop heuristic may be a no-op on many full-page designed rasters — acceptable, documented
 - CORS is browser hygiene only; primary cost protection is GCP billing cap and Cloud Run max instances
 - Billing disable at cap will take the service offline — acceptable for portfolio use case, documented in README
 - v1.5 browser holds only small thumbnails and classification JSON between /thumbnails and /convert calls — lightweight, no full-res image storage in browser

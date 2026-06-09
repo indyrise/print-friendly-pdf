@@ -118,7 +118,6 @@ def convert():
             pdf_bytes,
             dpi=150,
             lighten=True,
-            crop=True,
             classifications=classifications,
         )
     except Exception as exc:

@@ -1,8 +1,8 @@
-# Codex Prompt — pdf-print-prep
+# Codex Prompt — print-friendly-pdf
 
 ## Task
 
-Build a Python tool called `pdf-print-prep` that converts design-heavy PDFs (dark backgrounds, colored layouts) into print-friendly PDFs. The core goal is ink reduction — pages with dark backgrounds should be lightened so they are actually printable without heavy ink use.
+Build a Python tool called `print-friendly-pdf` that converts design-heavy PDFs (dark backgrounds, colored layouts) into print-friendly PDFs. The core goal is ink reduction — pages with dark backgrounds should be lightened so they are actually printable without heavy ink use.
 
 Output is a PDF file. The browser opens it in a new tab with a native print button. Target browser is Chrome.
 
@@ -37,7 +37,7 @@ pdf_print_prep/
 
 All processing functions live here, imported by both cli.py and app.py.
 
-### process_pdf(pdf_bytes, dpi=150, lighten=True, crop=True, classifications=None) -> bytes
+### process_pdf(pdf_bytes, dpi=150, lighten=True, classifications=None) -> bytes
 
 Accepts PDF as bytes. Returns processed PDF as bytes.
 
@@ -117,25 +117,7 @@ If None or missing entries for a page, falls back to corner-sampling heuristic f
   - This is a luminance-based remap — not a full inversion, not histogram-wide autocontrast
 - Log per page: whether lightening was applied, and whether classification or heuristic was used
 
-**Step 4 — Crop**
-
-- Skip if `crop=False`
-- Apply `ImageOps.invert(img).getbbox()` — simple trim heuristic, not content-aware
-- On full-page designed rasters may return near-full-image bounds and be a no-op — acceptable
-- If `getbbox()` returns None: log and skip, do not crash
-- If bounds found: crop then add 10px safe margin on all sides:
-  ```python
-  bbox = ImageOps.invert(img).getbbox()
-  if bbox:
-      x1, y1, x2, y2 = bbox
-      x1 = max(0, x1 - 10)
-      y1 = max(0, y1 - 10)
-      x2 = min(img.width, x2 + 10)
-      y2 = min(img.height, y2 + 10)
-      img = img.crop((x1, y1, x2, y2))
-  ```
-
-**Step 5 — PDF Reassembly**
+**Step 4 — PDF Reassembly**
 
 - Create new PyMuPDF document: `output_pdf = fitz.open()`
 - Per processed page image:
@@ -156,7 +138,7 @@ If None or missing entries for a page, falls back to corner-sampling heuristic f
 
 Print on completion:
 ```
---- pdf-print-prep complete ---
+--- print-friendly-pdf complete ---
 Pages processed: 54
 Format: JPEG (chars_per_page=47)
 Lightening applied: pages 1-48, 50-54
@@ -198,7 +180,7 @@ Lightweight function for v1.5 `/thumbnails` endpoint.
   - Password-protected PDF (caught as ValueError) → `400 {"error": "Password-protected PDFs are not supported"}`
   - Zero-page PDF → `400 {"error": "PDF contains no pages"}`
   - Any other processing failure → `500 {"error": "Processing failed: {message}"}`
-- Call `process_pdf(pdf_bytes, dpi=150, lighten=True, crop=True, classifications=classifications)`
+- Call `process_pdf(pdf_bytes, dpi=150, lighten=True, classifications=classifications)`
 - Return PDF as file download:
   - `Content-Type: application/pdf`
   - `Content-Disposition: inline; filename="{original_stem}_print.pdf"`
@@ -222,7 +204,7 @@ Lightweight function for v1.5 `/thumbnails` endpoint.
 ### CORS
 
 ```python
-ALLOWED_ORIGIN = "https://pdf-print-prep.indyri.se"
+ALLOWED_ORIGIN = "https://print-friendly-pdf.indyri.se"
 
 @app.after_request
 def apply_cors(response):
@@ -266,7 +248,7 @@ app.run(host="0.0.0.0", port=PORT)
 ## CLI Entry Point (cli.py)
 
 ```
-python cli.py input.pdf [--dpi 150] [--no-lighten] [--no-crop]
+python cli.py input.pdf [--dpi 150] [--no-lighten]
 ```
 
 - Read PDF from file path

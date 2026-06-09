@@ -14,7 +14,6 @@ def main() -> int:
     parser.add_argument("input_pdf", type=Path)
     parser.add_argument("--dpi", type=int, default=150)
     parser.add_argument("--no-lighten", action="store_true")
-    parser.add_argument("--no-crop", action="store_true")
     args = parser.parse_args()
 
     if not args.input_pdf.exists():
@@ -29,7 +28,6 @@ def main() -> int:
             args.input_pdf.read_bytes(),
             dpi=args.dpi,
             lighten=not args.no_lighten,
-            crop=not args.no_crop,
             classifications=None,
         )
     except Exception as exc:
