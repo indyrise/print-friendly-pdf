@@ -1,3 +1,5 @@
+> **SUPERSEDED by BUILD_PLAN_v2.md (2026-06-10)** — kept for project history.
+
 # Build Plan — print-friendly-pdf
 
 **Date:** 2026-06-07  
@@ -202,7 +204,7 @@ Follow this order exactly. Do not move to the next step until the current one is
 ### Phase 8 — GCP Billing Controls (hard prerequisite before URL goes public)
 
 - Create monthly budget in GCP Billing console: $20 cap
-- Alert at 50%: email notification to rucha@indyri.se
+- Alert at 50%: email notification to project owner
 - Alert at 100%: configure billing-disable automation workflow via Cloud Pub/Sub + Cloud Function (not automatic by default — must be set up explicitly)
 - Document in README: billing disable will take the service offline
 

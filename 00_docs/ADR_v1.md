@@ -1,3 +1,5 @@
+> **SUPERSEDED by ADR_v2.md (2026-06-10)** — kept for project history.
+
 # ADR — print-friendly-pdf
 
 **Status:** Accepted  
@@ -119,7 +121,7 @@ v1 is optimized for Chrome. Cross-browser print behavior is explicitly out of sc
 
 ### GCP billing controls
 - Monthly budget cap set before Cloud Run URL is made public — hard prerequisite
-- Alert at 50%: email notification to rucha@indyri.se
+- Alert at 50%: email notification to project owner
 - Alert at 100%: triggers billing-disable automation workflow (not automatic by default — requires Cloud Pub/Sub + Cloud Function setup; must be configured explicitly)
 - Recommended starting cap: $20/month
 - At max 2 instances, ~60-90 seconds per conversion, Cloud Run compute costs approximately $0.002-0.003 per PDF — thousands of conversions required to approach $20 cap

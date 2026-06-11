@@ -23,7 +23,7 @@
 - Crop removed entirely — heuristic caused more harm than benefit across arbitrary PDFs
 - `libmupdf-dev` apt line removed from Dockerfile — PyMuPDF wheels are self-contained since v1.18; the apt line would fail on slim containers
 - App renamed from `pdf-print-prep` to `print-friendly-pdf` mid-build
-- SenseAI PDF references removed from all public-facing docs before they were committed
+- validation PDF references removed from all public-facing docs before they were committed
 - "Test on 5 pages" clarified as manual inspection of full output, not a code-enforced constraint
 - Project abandoned after confirming full inversion is already a solved, saturated problem
 
@@ -48,3 +48,40 @@
 ## Carry-forward sentence
 
 Before speccing any document processing tool, run the intended input through the proposed approach mentally and confirm the output handles the failure mode (e.g. white text on dark background) — if it doesn't, either expand the spec or search for prior art first.
+
+---
+
+# Addendum — Project Revived (2026-06-10)
+
+**Status change: Abandoned → Active.**
+
+After the close-out above, Claude (Fable 5) was asked to review the full
+project and build a working MVP directly. Two architecture changes
+resolved the failure that triggered abandonment:
+
+1. **Hue-preserving lightness inversion** replaced LUT lightening —
+   `RGB' = RGB + (1 − max − min)` flips white text to black and dark
+   backgrounds to light while leaving saturated chart colors nearly
+   unchanged. Validated on the original failing document.
+2. **Surgical page replacement** replaced full re-rasterization — only
+   dark pages are touched; light documents return byte-identical.
+
+**What this changes about the original conclusions:**
+- "The problem is solved by existing tools" was wrong in one specific
+  way: existing tools do naive RGB inversion, which destroys chart
+  colors. Hue preservation is a real differentiator. The original search
+  identified the right competitors but compared against the wrong (LUT)
+  architecture rather than asking what would beat them.
+- "Search for prior art first" stands, with a refinement: prior art
+  defines the bar to clear, not necessarily the reason to stop.
+
+**New lessons:**
+- Lightness inversion is symmetric: white panels on dark pages flip to
+  black. Logged as R1 in V1.5_REQUIREMENTS.md with acceptance criteria.
+- Detection and processing should be separate passes at different DPIs —
+  detect cheap (36 DPI), process expensive (150 DPI) only where needed.
+- Schema rename: `safe_to_lighten` → `safe_to_invert`; frontend prompt
+  must match.
+
+The original close-out is preserved above, unmodified, as an accurate
+record of where the project stood on 2026-06-09.

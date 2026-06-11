@@ -1,246 +1,225 @@
-from __future__ import annotations
+"""
+print-friendly-pdf — core processing logic.
 
-import base64
-from dataclasses import dataclass
+Converts design-heavy PDFs (dark backgrounds, white text, colored charts)
+into print-friendly PDFs via hue-preserving lightness inversion.
+
+Two design decisions distinguish this from naive PDF inverters:
+
+1. HUE-PRESERVING INVERSION. Inverting lightness L in HSL space — rather
+   than inverting RGB — flips dark backgrounds to light and white text to
+   black while leaving saturated mid-lightness colors (chart bars, accents)
+   nearly unchanged. The HSL lightness flip reduces to a closed-form RGB
+   operation:
+
+       RGB' = RGB + (1 - max(RGB) - min(RGB))
+
+   Proof of no clipping: with k = 1 - max - min,
+       max + k = 1 - min  <= 1   (min >= 0)
+       min + k = 1 - max  >= 0   (max <= 1)
+   Hue and chroma are preserved because adding a constant to all three
+   channels leaves (max - min) and channel ordering unchanged.
+
+2. SURGICAL PAGE REPLACEMENT. Only dark-detected pages are rasterized and
+   replaced. Light pages remain the original vector content — searchable,
+   sharp, and small. A document needing no changes is returned unchanged.
+"""
+
 from io import BytesIO
-from typing import Any
 
-import fitz
+import fitz  # PyMuPDF
+import numpy as np
 from PIL import Image
 
-
-JPEG_THRESHOLD_CHARS_PER_PAGE = 200
-
-
-@dataclass
-class ProcessingSummary:
-    page_count: int
-    fmt: str
-    chars_per_page: float
-    lightened_pages: list[int]
-    skipped_safe_false_pages: list[int]
-    skipped_light_pages: list[int]
-    image_dominant_pages: list[int]
+DARK_THRESHOLD = 80           # mean corner RGB below this => dark page
+CORNER_SIZE = 10              # corner sample square in pixels
+DETECT_DPI = 36               # cheap low-res render for detection only
+PAGE_CHARS_PNG_THRESHOLD = 200  # page chars >= this => PNG, else JPEG
+NEAR_WHITE = 225              # min(RGB) >= this => near-white pixel (R1)
+MIN_REGION_FRACTION = 0.02    # preserve components >= 2% of page area (R1)
 
 
-def _open_pdf(pdf_bytes: bytes) -> fitz.Document:
-    try:
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    except Exception as exc:
-        raise ValueError("PDF could not be opened") from exc
+def preserve_light_regions_mask(img: Image.Image):
+    """R1: find large near-white regions (content panels, cards) on a page
+    about to be inverted, and return a boolean mask of pixels to preserve.
+
+    Near-white pixels are labeled into connected components; components
+    covering >= MIN_REGION_FRACTION of the page are kept, with holes
+    filled so panel contents (logos, text inside cards) are preserved
+    along with the panel background.
+
+    Fail-open: if nothing qualifies, returns None and the page inverts
+    exactly as before.
+    """
+    from scipy import ndimage
+
+    arr = np.asarray(img)
+    near_white = arr.min(axis=-1) >= NEAR_WHITE
+    if not near_white.any():
+        return None
+
+    labels, n = ndimage.label(near_white)
+    if n == 0:
+        return None
+
+    min_area = MIN_REGION_FRACTION * arr.shape[0] * arr.shape[1]
+    sizes = ndimage.sum(near_white, labels, range(1, n + 1))
+    keep = [i + 1 for i, s in enumerate(sizes) if s >= min_area]
+    if not keep:
+        return None
+
+    mask = np.isin(labels, keep)
+    mask = ndimage.binary_fill_holes(mask)  # include panel contents
+    return mask
+
+
+def invert_lightness(img: Image.Image, preserve_panels: bool = True) -> Image.Image:
+    """Hue-preserving lightness inversion (HSL L -> 1-L), vectorized.
+
+    If preserve_panels is True (R1), large near-white content regions are
+    excluded from inversion and keep their original pixels.
+    """
+    arr = np.asarray(img, dtype=np.float32) / 255.0
+    mx = arr.max(axis=-1, keepdims=True)
+    mn = arr.min(axis=-1, keepdims=True)
+    out = arr + (1.0 - mx - mn)
+
+    # Snap light, near-neutral pixels (inverted backgrounds) to pure white.
+    # Colored content (chart bars, accents) has chroma above the threshold
+    # and is untouched; this removes the residual background tint that
+    # hue preservation would otherwise leave (e.g. navy -> pale blue).
+    mx2 = out.max(axis=-1)
+    mn2 = out.min(axis=-1)
+    light_neutral = ((mx2 + mn2) / 2 >= 0.85) & ((mx2 - mn2) <= 0.12)
+    out = np.where(light_neutral[..., None], 1.0, out)
+
+    if preserve_panels:
+        mask = preserve_light_regions_mask(img)
+        if mask is not None:
+            out = np.where(mask[..., None], arr, out)
+            pct = 100.0 * mask.mean()
+            print(f"  R1: preserved light panel region(s), "
+                  f"{pct:.1f}% of page area")
+
+    return Image.fromarray((out * 255.0 + 0.5).astype(np.uint8), mode="RGB")
+
+
+def _pixmap_to_image(pix) -> Image.Image:
+    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    white = Image.new("RGB", img.size, (255, 255, 255))
+    white.paste(img)
+    return white
+
+
+def is_dark_page(img: Image.Image) -> bool:
+    """Corner-sampling heuristic: mean RGB of four corners below threshold."""
+    w, h = img.size
+    s = min(CORNER_SIZE, w, h)
+    corners = [
+        img.crop((0, 0, s, s)),
+        img.crop((w - s, 0, w, s)),
+        img.crop((0, h - s, s, h)),
+        img.crop((w - s, h - s, w, h)),
+    ]
+    pixels = [p for c in corners for p in list(c.getdata())]
+    mean_rgb = sum(sum(p) / 3 for p in pixels) / len(pixels)
+    return mean_rgb < DARK_THRESHOLD
+
+
+def process_pdf(pdf_bytes: bytes, dpi: int = 150, invert: bool = True,
+                classifications=None) -> bytes:
+    """Invert lightness on dark-detected pages; leave all other pages as
+    original vector content. Returns processed PDF as bytes.
+
+    classifications: optional list of dicts
+        [{"page_index": 0, "background": "dark|light|mixed",
+          "safe_to_invert": true|false}, ...]
+    If provided, overrides the corner-sampling heuristic per page.
+    Pages without an entry fall back to the heuristic.
+    """
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
     if doc.needs_pass:
-        doc.close()
         raise ValueError("Password-protected PDFs are not supported")
-
     if len(doc) == 0:
-        doc.close()
         raise ValueError("PDF contains no pages")
 
-    return doc
-
-
-def _format_page_list(pages: list[int]) -> str:
-    if not pages:
-        return "none"
-    return ", ".join(str(page + 1) for page in pages)
-
-
-def _classifications_by_page(
-    classifications: list[dict[str, Any]] | None,
-) -> dict[int, dict[str, Any]]:
-    if not classifications:
-        return {}
-
-    by_page: dict[int, dict[str, Any]] = {}
-    for entry in classifications:
-        by_page[entry["page_index"]] = entry
-    return by_page
-
-
-def _select_output_format(doc: fitz.Document) -> tuple[str, float, list[int]]:
     print(f"Pages: {len(doc)}")
-    page_text = [page.get_text() for page in doc]
-    image_dominant_pages = [
-        index for index, text in enumerate(page_text) if len(text) < 20
-    ]
-    for page_index in image_dominant_pages:
-        print(f"Page {page_index + 1}: image-dominant (<20 chars)")
 
-    total_chars = sum(len(text) for text in page_text)
-    chars_per_page = total_chars / len(doc)
-    fmt = "jpeg" if chars_per_page < JPEG_THRESHOLD_CHARS_PER_PAGE else "png"
-    if fmt == "jpeg":
-        print(
-            f"Format: JPEG (chars_per_page={chars_per_page:.0f}) "
-            "- gradient/image-heavy document"
-        )
-    else:
-        print(f"Format: PNG (chars_per_page={chars_per_page:.0f})")
-    return fmt, chars_per_page, image_dominant_pages
+    cls = {}
+    if classifications:
+        for entry in classifications:
+            cls[entry["page_index"]] = entry
 
-
-def _pixmap_to_rgb_image(pixmap: fitz.Pixmap) -> Image.Image:
-    mode = "RGBA" if pixmap.alpha else "RGB"
-    img = Image.frombytes(mode, (pixmap.width, pixmap.height), pixmap.samples)
-    if img.mode != "RGB":
-        img = img.convert("RGBA")
-        white = Image.new("RGBA", img.size, (255, 255, 255, 255))
-        white.alpha_composite(img)
-        img = white.convert("RGB")
-    else:
-        white = Image.new("RGB", img.size, (255, 255, 255))
-        white.paste(img)
-        img = white
-    return img
-
-
-def _should_lighten_by_heuristic(img: Image.Image) -> bool:
-    w, h = img.size
-    sample = min(10, w, h)
-    corners = [
-        img.crop((0, 0, sample, sample)),
-        img.crop((w - sample, 0, w, sample)),
-        img.crop((0, h - sample, sample, h)),
-        img.crop((w - sample, h - sample, w, h)),
-    ]
-    pixels = [pixel for corner in corners for pixel in corner.getdata()]
-    mean_rgb = sum(sum(pixel) / 3 for pixel in pixels) / len(pixels)
-    return mean_rgb < 80
-
-
-def _should_lighten_by_classification(entry: dict[str, Any]) -> bool:
-    background = entry["background"]
-    safe_to_lighten = entry["safe_to_lighten"]
-    if not safe_to_lighten:
-        return False
-    return background == "dark" or background == "mixed"
-
-
-def _lighten_image(img: Image.Image) -> Image.Image:
-    lut = []
-    for value in range(256):
-        if value <= 60:
-            lut.append(int(220 + (255 - 220) * (1 - value / 60)))
+    # --- Pass 1: cheap detection at low DPI ---
+    to_invert = []
+    for i, page in enumerate(doc):
+        if not invert:
+            break
+        if i in cls:
+            e = cls[i]
+            dark = (e["background"] == "dark"
+                    or (e["background"] == "mixed" and e["safe_to_invert"]))
+            source = "classification"
         else:
-            lut.append(value)
-    return img.point(lut * 3)
+            img = _pixmap_to_image(page.get_pixmap(dpi=DETECT_DPI))
+            dark = is_dark_page(img)
+            source = "heuristic"
+        print(f"Page {i}: dark={dark} ({source})")
+        if dark:
+            to_invert.append(i)
 
+    if not to_invert:
+        print("--- print-friendly-pdf complete ---")
+        print("No dark pages detected — returning original unchanged")
+        return pdf_bytes
 
-def _print_summary(summary: ProcessingSummary) -> None:
+    # --- Pass 2: rasterize, invert, and replace only the dark pages ---
+    for i in to_invert:
+        page = doc[i]
+        rect = page.rect
+        page_chars = len(page.get_text())
+        fmt = "png" if page_chars >= PAGE_CHARS_PNG_THRESHOLD else "jpeg"
+
+        img = invert_lightness(_pixmap_to_image(page.get_pixmap(dpi=dpi)))
+
+        buf = BytesIO()
+        if fmt == "jpeg":
+            img.save(buf, format="JPEG", quality=85)
+        else:
+            img.save(buf, format="PNG")
+
+        # Insert replacement page at position i (original shifts to i+1),
+        # keep original page dimensions in points, then delete the original.
+        new_page = doc.new_page(pno=i, width=rect.width, height=rect.height)
+        new_page.insert_image(new_page.rect, stream=buf.getvalue())
+        doc.delete_page(i + 1)
+        print(f"Page {i}: inverted and replaced ({fmt}, {page_chars} chars)")
+
     print("--- print-friendly-pdf complete ---")
-    print(f"Pages processed: {summary.page_count}")
-    print(f"Format: {summary.fmt.upper()} (chars_per_page={summary.chars_per_page:.0f})")
-    print(f"Lightening applied: pages {_format_page_list(summary.lightened_pages)}")
-    print(
-        "Lightening skipped (classification safe_to_lighten=false): "
-        f"page {_format_page_list(summary.skipped_safe_false_pages)}"
-    )
-    print(
-        "Lightening skipped (light background): "
-        f"page {_format_page_list(summary.skipped_light_pages)}"
-    )
-    print(
-        "Image-dominant pages (< 20 chars): "
-        f"{_format_page_list(summary.image_dominant_pages)}"
-    )
+    print(f"Pages processed: {len(doc)}")
+    print(f"Inverted: {to_invert}")
+    print(f"Untouched (original vector): "
+          f"{[i for i in range(len(doc)) if i not in to_invert]}")
+
+    return doc.tobytes(garbage=3, deflate=True)
 
 
-def process_pdf(
-    pdf_bytes: bytes,
-    dpi: int = 150,
-    lighten: bool = True,
-    classifications: list[dict[str, Any]] | None = None,
-) -> bytes:
-    doc = _open_pdf(pdf_bytes)
-    output_pdf = fitz.open()
-    lightened_pages: list[int] = []
-    skipped_safe_false_pages: list[int] = []
-    skipped_light_pages: list[int] = []
-    classifications_by_page = _classifications_by_page(classifications)
-
-    try:
-        fmt, chars_per_page, image_dominant_pages = _select_output_format(doc)
-
-        for page_index, source_page in enumerate(doc):
-            try:
-                pixmap = source_page.get_pixmap(dpi=dpi, colorspace=fitz.csRGB)
-                img = _pixmap_to_rgb_image(pixmap)
-
-                lightening_applied = False
-                lightening_source = "disabled"
-                if lighten:
-                    classification = classifications_by_page.get(page_index)
-                    if classification:
-                        lightening_source = "classification"
-                        if not classification["safe_to_lighten"]:
-                            skipped_safe_false_pages.append(page_index)
-                        elif classification["background"] == "light":
-                            skipped_light_pages.append(page_index)
-                        if _should_lighten_by_classification(classification):
-                            img = _lighten_image(img)
-                            lightening_applied = True
-                            lightened_pages.append(page_index)
-                    else:
-                        lightening_source = "heuristic"
-                        if _should_lighten_by_heuristic(img):
-                            img = _lighten_image(img)
-                            lightening_applied = True
-                            lightened_pages.append(page_index)
-
-                print(
-                    f"Page {page_index + 1}: lightening "
-                    f"{'applied' if lightening_applied else 'skipped'} "
-                    f"({lightening_source})"
-                )
-
-                buf = BytesIO()
-                if fmt == "jpeg":
-                    img.save(buf, format="JPEG", quality=85)
-                else:
-                    img.save(buf, format="PNG")
-
-                output_page = output_pdf.new_page(width=img.width, height=img.height)
-                output_page.insert_image(output_page.rect, stream=buf.getvalue())
-            except Exception as exc:
-                raise RuntimeError(f"Page {page_index + 1} failed: {exc}") from exc
-
-        result = output_pdf.tobytes()
-        _print_summary(
-            ProcessingSummary(
-                page_count=len(doc),
-                fmt=fmt,
-                chars_per_page=chars_per_page,
-                lightened_pages=lightened_pages,
-                skipped_safe_false_pages=skipped_safe_false_pages,
-                skipped_light_pages=skipped_light_pages,
-                image_dominant_pages=image_dominant_pages,
-            )
-        )
-        return result
-    finally:
-        output_pdf.close()
-        doc.close()
-
-
-def generate_thumbnails(pdf_bytes: bytes) -> list[dict[str, Any]]:
-    doc = _open_pdf(pdf_bytes)
-    thumbnails: list[dict[str, Any]] = []
-    try:
-        for page_index, page in enumerate(doc):
-            rect = page.rect
-            scale = 150 / rect.width
-            matrix = fitz.Matrix(scale, scale)
-            pixmap = page.get_pixmap(matrix=matrix, colorspace=fitz.csRGB)
-            img = _pixmap_to_rgb_image(pixmap)
-            buf = BytesIO()
-            img.save(buf, format="JPEG", quality=70)
-            thumbnails.append(
-                {
-                    "page_index": page_index,
-                    "image": base64.b64encode(buf.getvalue()).decode("ascii"),
-                }
-            )
-    finally:
-        doc.close()
-    return thumbnails
+def generate_thumbnails(pdf_bytes: bytes) -> list:
+    """Low-res page thumbnails for browser-side AI classification (v1.5)."""
+    import base64
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    if doc.needs_pass:
+        raise ValueError("Password-protected PDFs are not supported")
+    if len(doc) == 0:
+        raise ValueError("PDF contains no pages")
+    out = []
+    for i, page in enumerate(doc):
+        scale = 150 / page.rect.width
+        pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
+        img = _pixmap_to_image(pix)
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=70)
+        out.append({"page_index": i,
+                    "image": base64.b64encode(buf.getvalue()).decode()})
+    return out

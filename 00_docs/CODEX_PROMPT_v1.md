@@ -1,3 +1,5 @@
+> **SUPERSEDED 2026-06-10** — Implementation was rebuilt directly by Claude (Fable 5) with a different core algorithm (hue-preserving lightness inversion, surgical page replacement). This prompt documents the retired LUT architecture and was never used for the shipped code. Kept for project history.
+
 # Codex Prompt — print-friendly-pdf
 
 ## Task
