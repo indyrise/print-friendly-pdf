@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdf2print"
+version = "0.1.0"
+description = "Convert design-heavy PDFs into print-friendly versions via hue-preserving lightness inversion."
+authors = [
+  { name = "Rucha Gokhale" },
+]
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+  "pymupdf",
+  "pillow",
+  "scipy",
+  "numpy",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+
+[project.scripts]
+pdf2print = "pdf_print_prep.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pdf_print_prep"]

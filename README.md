@@ -1,5 +1,16 @@
 # print-friendly-pdf
 
+## Install
+```
+pip install pdf2print
+```
+
+## Usage
+```
+pdf2print input.pdf
+pdf2print input.pdf --dpi 300
+```
+
 Converts design-heavy PDFs (dark backgrounds, white text, colored charts)
 into print-friendly versions — without destroying chart colors.
 

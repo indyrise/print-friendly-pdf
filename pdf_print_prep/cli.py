@@ -1,4 +1,4 @@
-"""print-friendly-pdf CLI — local testing entry point."""
+"""print-friendly-pdf CLI."""
 import argparse
 import sys
 from pathlib import Path
