@@ -48,3 +48,8 @@ htmlcov/
 
 # Vercel
 .vercel
+
+# Virtual environment
+.venv-test-pdf2print/
+.venv/
+venv/
