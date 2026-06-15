@@ -3,6 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
+readme = "README.md"
 name = "pdf2print"
 version = "0.1.0"
 description = "Convert design-heavy PDFs into print-friendly versions via hue-preserving lightness inversion."
