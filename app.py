@@ -10,8 +10,9 @@ from io import BytesIO
 from pdf_print_prep.core import process_pdf, generate_thumbnails
 
 app = Flask(__name__)
-
 MAX_SIZE = 32 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_SIZE
+app.config["MAX_FORM_MEMORY_SIZE"] = MAX_SIZE
 ALLOWED_ORIGIN = "https://print-friendly-pdf.indyri.se"
 
 
@@ -36,16 +37,34 @@ def options():
 
 
 def _validate_upload():
-    """Shared upload validation. Returns (pdf_bytes, stem) or raises with
-    a (response, status) tuple via ValueError carrying the response."""
+    """Shared upload validation. Returns (pdf_bytes, stem, err)."""
+
+    print("CONTENT_TYPE:", request.content_type, flush=True)
+    print("CONTENT_LENGTH:", request.content_length, flush=True)
+    print("FORM KEYS:", list(request.form.keys()), flush=True)
+    print("FILE KEYS:", list(request.files.keys()), flush=True)
+
     if "pdf" not in request.files:
+        raw = request.get_data(cache=True)
+        print("RAW LENGTH:", len(raw), flush=True)
+        print("RAW FIRST 500:", raw[:500], flush=True)
         return None, None, (jsonify(error="No file uploaded"), 400)
+
     f = request.files["pdf"]
+
+    print("PDF FILENAME:", f.filename, flush=True)
+    print("PDF CONTENT_TYPE:", f.content_type, flush=True)
+
     if not f.filename.lower().endswith(".pdf"):
         return None, None, (jsonify(error="File must be a PDF"), 400)
+
     data = f.read()
+
+    print("PDF BYTE LENGTH:", len(data), flush=True)
+
     if len(data) > MAX_SIZE:
         return None, None, (jsonify(error="File too large. Maximum size is 32MB."), 400)
+
     return data, Path(f.filename).stem, None
 
 

@@ -3,3 +3,5 @@ pillow
 flask
 numpy
 scipy
+gunicorn
+werkzeug==2.3.7
